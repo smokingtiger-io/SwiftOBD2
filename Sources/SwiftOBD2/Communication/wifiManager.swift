@@ -106,22 +106,55 @@ class WifiManager: CommProtocol {
                     return
                 }
 
-                tcpConnection.receive(minimumIncompleteLength: 1, maximumLength: 500) { data, _, _, error in
-                    if let error = error {
-                        logger.error("Error receiving data: \(error.localizedDescription)")
-                        continuation.resume(throwing: CommunicationError.errorOccurred(error))
-                        return
-                    }
+                // ELM327 frames each reply with a trailing '>' prompt. A single TCP
+                // receive can return only the command echo or only part of the
+                // response, so accumulate chunks until the prompt arrives. Without
+                // this loop, a later command picks up the previous command's
+                // leftover bytes and parsing collapses.
+                var accumulated = ""
+                let hasResumed = AtomicFlag()
 
-                    guard let response = data, let responseString = String(data: response, encoding: .utf8) else {
-                        logger.warning("Received invalid or empty data")
-                        continuation.resume(throwing: CommunicationError.invalidData)
-                        return
+                func readMore() {
+                    tcpConnection.receive(minimumIncompleteLength: 1, maximumLength: 500) { data, _, _, error in
+                        if hasResumed.isSet { return }
+                        if let error = error {
+                            logger.error("Error receiving data: \(error.localizedDescription)")
+                            if hasResumed.setIfClear() {
+                                continuation.resume(throwing: CommunicationError.errorOccurred(error))
+                            }
+                            return
+                        }
+                        guard let data, let chunk = String(data: data, encoding: .utf8) else {
+                            logger.warning("Received invalid or empty data")
+                            if hasResumed.setIfClear() {
+                                continuation.resume(throwing: CommunicationError.invalidData)
+                            }
+                            return
+                        }
+                        accumulated.append(chunk)
+                        if accumulated.contains(">") {
+                            if hasResumed.setIfClear() {
+                                continuation.resume(returning: accumulated)
+                            }
+                        } else {
+                            readMore()
+                        }
                     }
-
-                    continuation.resume(returning: responseString)
                 }
+                readMore()
             })
+        }
+    }
+
+    private final class AtomicFlag {
+        private let lock = NSLock()
+        private var flag = false
+        var isSet: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+        func setIfClear() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if flag { return false }
+            flag = true
+            return true
         }
     }
 
