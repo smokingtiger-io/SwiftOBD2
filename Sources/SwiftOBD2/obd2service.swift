@@ -226,7 +226,14 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
             guard let responseData = try elm327.canProtocol?.parse(response).first?.data else {
                 return .failure(.noData)
             }
-            return command.properties.decode(data: responseData.dropFirst())
+            // CommandProperties.decode strips the PID byte before invoking the
+            // decoder, matching the other call sites in elm327 (getStatus,
+            // scanForTroubleCodes, requestPIDs). The earlier extra dropFirst()
+            // here removed an additional byte, leaving 1-byte decoders with
+            // empty data (-> coolant locked at -40 °C, engine load at 0 %,
+            // pressure at 0 kPa, speed at 0 km/h) and clipping the high byte
+            // of 2-byte PIDs like RPM (B-only readings).
+            return command.properties.decode(data: responseData)
         } catch {
             throw OBDServiceError.commandFailed(command: command.properties.command, error: error)
         }
