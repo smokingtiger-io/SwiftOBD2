@@ -65,9 +65,6 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     ///
     public init(connectionType: ConnectionType = .bluetooth) {
         self.connectionType = connectionType
-#if targetEnvironment(simulator)
-        elm327 = ELM327(comm: MOCKComm())
-#else
         switch connectionType {
         case .bluetooth:
             let bleManager = BLEManager()
@@ -77,7 +74,6 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
         case .demo:
             elm327 = ELM327(comm: MOCKComm())
         }
-#endif
         elm327.obdDelegate = self
     }
 
