@@ -473,8 +473,10 @@ struct MaxMafDecoder: Decoder {
         guard data.count > 0 else {
             return .failure(.invalidData)
         }
-        let value = data[0] * 10
-        return .success((.measurementResult(MeasurementResult(value: Double(value), unit: Unit.gramsPerSecond))))
+        // Promote to Double before multiplying — `data[0] * 10` is UInt8
+        // arithmetic and traps for any data[0] >= 26 (26 * 10 = 260 > 255).
+        let value = Double(data[0]) * 10
+        return .success((.measurementResult(MeasurementResult(value: value, unit: Unit.gramsPerSecond))))
     }
 }
 
