@@ -568,11 +568,15 @@ struct O2SensorsAltDecoder: Decoder {
 
 struct OBDComplianceDecoder: Decoder {
     func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
-        guard data.count > 1 else {
+        // PID 011C (OBD Standards Compliance) returns a single byte. The
+        // PID byte itself is stripped before the decoder runs (see
+        // CommandProperties.decode), so the compliance code lives at
+        // data[0], not data[1]. Reading data[1] needed a 2-byte payload
+        // that 011C never carries — the decoder always returned
+        // invalidData for real ECUs.
+        guard let i = data.first else {
             return .failure(.invalidData)
         }
-        
-        let i = data[1]
 
         if i < OBD_COMPLIANCE.count {
             return .success(.stringResult((OBD_COMPLIANCE[Int(i)])))
