@@ -117,6 +117,11 @@ public enum PROTOCOL: String, Codable, CaseIterable {
 }
 
 // dictionary of all the protocols
+// protocolB and protocolC (USER1/USER2 CAN variants) fall back to the
+// 11-bit/500k parser — they share the CAN framing of protocol 6, just
+// at a different baud rate. Without these entries `canProtocol =
+// protocols[detectedProtocol]` returned nil for any adapter that
+// detected USER1/USER2 and every downstream parse silently failed.
 let protocols: [PROTOCOL: CANProtocol] = [
     .protocol1: SAE_J1850_PWM(),
     .protocol2: SAE_J1850_VPW(),
@@ -128,4 +133,6 @@ let protocols: [PROTOCOL: CANProtocol] = [
     .protocol8: ISO_15765_4_11bit_250K(),
     .protocol9: ISO_15765_4_29bit_250k(),
     .protocolA: SAE_J1939(),
+    .protocolB: ISO_15765_4_11bit_500k(),
+    .protocolC: ISO_15765_4_11bit_500k(),
 ]

@@ -24,7 +24,17 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "SwiftOBD2"
+            name: "SwiftOBD2",
+            // commands.json sits under Sources/SwiftOBD2/Resources. We
+            // don't currently read it at runtime (the live `obd2service`
+            // helper that loads it is commented out), but listing the
+            // directory under `resources:` silences the SwiftPM warning
+            // about an unhandled resource file. If the loader is ever
+            // re-enabled, `Bundle.module.url(forResource: "commands"…)`
+            // resolves through this same declaration.
+            resources: [
+                .process("Resources")
+            ]
 //            plugins: [
 //                .plugin(name: "SwiftLint", package: "SwiftLintPlugin")
 //            ]

@@ -234,9 +234,8 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
 
     func willRestoreState(_: CBCentralManager, dict: [String: Any]) {
         if let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral], let peripheral = peripherals.first {
-            obdDebug("Restoring peripheral: \(peripherals[0].name ?? "Unnamed")", category: .bluetooth)
+            obdDebug("Restoring peripheral: \(peripheral.name ?? "Unnamed")", category: .bluetooth)
             peripheralManager.setPeripheral(peripheral)
-
         }
     }
 

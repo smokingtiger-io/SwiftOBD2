@@ -57,7 +57,7 @@ class MOCKComm: CommProtocol {
             mode = mode + 40
 
             if response.count > 18 {
-                var chunks = response.chunked(by: 15)
+                let chunks = response.chunked(by: 15)
 
                 var ff = chunks[0]
 
@@ -139,7 +139,7 @@ class MOCKComm: CommProtocol {
                 }
             }()
             if ecuSettings.echo {
-                response .insert(command, at: 0)
+                response.insert(command, at: 0)
             }
             return response
 

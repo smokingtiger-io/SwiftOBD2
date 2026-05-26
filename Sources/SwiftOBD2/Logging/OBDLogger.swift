@@ -146,19 +146,12 @@ public class OBDLogger {
         info("\(status) \(operation): \(String(format: "%.3f", duration))s", category: .performance)
     }
     
-    /// Log Bluetooth specific events (deprecated - use direct obdInfo/obdDebug instead)
-    @available(*, deprecated, message: "Use obdInfo() or obdDebug() with .bluetooth category directly")
-    public func logBluetoothEvent(_ event: String, peripheral: String? = nil, service: String? = nil) {
-        var message = event
-        if let peripheral = peripheral {
-            message += " | Peripheral: \(peripheral)"
-        }
-        if let service = service {
-            message += " | Service: \(service)"
-        }
-        info(message, category: .bluetooth)
-    }
-    
+    // Note: previously this file carried a deprecated logBluetoothEvent()
+    // helper with no callers left inside SwiftOBD2. Removed to keep the
+    // surface tight; if any external consumer still calls it the
+    // straightforward replacement is `obdInfo(message, category: .bluetooth)`.
+
+
     /// Log protocol detection and negotiation
     public func logProtocolEvent(_ event: String, protocol: String? = nil, details: String? = nil) {
         var message = event
