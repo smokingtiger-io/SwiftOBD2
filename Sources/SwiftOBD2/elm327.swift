@@ -141,13 +141,12 @@ class ELM327 {
 
         if let protocolToTest = preferredProtocol {
             logger.info("Attempting preferred protocol: \(protocolToTest.description)")
-            // The previous code only ran testProtocol (a 0100 probe) and
-            // never sent ATSPx, so a vehicle already detected under the
-            // adapter's auto-protocol mode would pass the probe and we'd
-            // return preferredProtocol even though the wire format was
-            // actually whatever ATSP0 picked. That tricked the parser
-            // table lookup in setupVehicle into using the wrong CAN/legacy
-            // parser. Force the adapter onto the requested protocol first.
+            // Force the adapter onto the requested protocol with ATSPx
+            // before probing. Without this the adapter could still be in
+            // ATSP0 (auto) mode and a passing 0100 probe would return
+            // the preferred protocol id even though the wire format was
+            // whatever auto-detect picked, leading to a wrong-parser
+            // lookup in setupVehicle.
             do {
                 _ = try await okResponse(protocolToTest.cmd)
                 if await testProtocol(protocolToTest) {
@@ -157,16 +156,18 @@ class ELM327 {
             } catch {
                 logger.warning("Failed to switch adapter to \(protocolToTest.description): \(error.localizedDescription). Falling back to automatic detection.")
             }
-        } else {
-            do {
-                return try await detectProtocolAutomatically()
-            } catch {
-                return try await detectProtocolManually()
-            }
         }
 
-        logger.error("Failed to detect a compatible OBD protocol.")
-        throw ELM327Error.noProtocolFound
+        // Reached either when no preferredProtocol was supplied, or when
+        // the preferred path above logged "Falling back". Try automatic
+        // first; if the adapter can't auto-detect, walk every protocol
+        // by hand. Previously the preferred-then-fail path skipped both
+        // and went straight to throw.
+        do {
+            return try await detectProtocolAutomatically()
+        } catch {
+            return try await detectProtocolManually()
+        }
     }
 
     /// Attempts to detect the OBD protocol automatically.
@@ -195,7 +196,17 @@ class ELM327 {
     private func detectProtocolManually() async throws -> PROTOCOL {
         for protocolOption in PROTOCOL.allCases where protocolOption != .NONE {
             self.logger.info("Testing protocol: \(protocolOption.description)")
-            _ = try await okResponse(protocolOption.cmd)
+            // Tolerate okResponse failure on a single protocol — the
+            // adapter may reject an ATSPx for an unsupported protocol,
+            // but the next protocol in the loop might still succeed.
+            // Previously the throw bubbled out and aborted the entire
+            // walk on the first rejection.
+            do {
+                _ = try await okResponse(protocolOption.cmd)
+            } catch {
+                logger.debug("Adapter rejected \(protocolOption.cmd): \(error.localizedDescription)")
+                continue
+            }
             if await testProtocol(protocolOption) {
                 return protocolOption
             }
