@@ -410,11 +410,16 @@ extension ELM327 {
                 // Ex.
                 //        || ||
                 // 7E8 06 41 00 BE 7F B8 13
-                guard let supportedPidsByECU = parseResponse(response) else {
+                guard let supportedPidsByECU = parseResponse(response, getter: pidGetter) else {
                     continue
                 }
 
+                // Restrict matches to the same mode family as the bitmap
+                // getter — a Mode 1 supported-PID bitmap must not match
+                // Mode 6 / Mode 9 commands that happen to share the same
+                // numeric PID.
                 let supportedCommands = OBDCommand.allCommands
+                    .filter { sameModeFamily($0, as: pidGetter) }
                     .filter { supportedPidsByECU.contains(String($0.properties.command.dropFirst(2))) }
                     .map { $0 }
 
@@ -430,24 +435,45 @@ extension ELM327 {
         return Array(Set(supportedPIDs))
     }
 
-    private func parseResponse(_ response: [String]) -> Set<String>? {
+    private func parseResponse(_ response: [String], getter: OBDCommand) -> Set<String>? {
         guard let ecuData = try? canProtocol?.parse(response).first?.data else {
             return nil
         }
         let binaryData = BitArray(data: ecuData.dropFirst()).binaryArray
-        return extractSupportedPIDs(binaryData)
+        return extractSupportedPIDs(binaryData, baseOffset: baseOffset(for: getter))
     }
 
-    func extractSupportedPIDs(_ binaryData: [Int]) -> Set<String> {
+    // A supported-PID bitmap getter like 0120 covers PIDs 0x21..0x40, so
+    // bit index 0 corresponds to PID 0x21. Without this offset the old
+    // code treated every bitmap as if it started at PID 0x01 — so 0120's
+    // first bit was reported as PID 01 (a Mode 1 PID that's already
+    // bitmap-tracked at 0100) and the real PID 21 went missing.
+    private func baseOffset(for getter: OBDCommand) -> Int {
+        let cmd = getter.properties.command
+        guard cmd.count >= 4,
+              let value = UInt8(cmd.suffix(2), radix: 16) else { return 0 }
+        return Int(value)
+    }
+
+    func extractSupportedPIDs(_ binaryData: [Int], baseOffset: Int = 0) -> Set<String> {
         var supportedPIDs: Set<String> = []
 
         for (index, value) in binaryData.enumerated() {
             if value == 1 {
-                let pid = String(format: "%02X", index + 1)
+                let pid = String(format: "%02X", baseOffset + index + 1)
                 supportedPIDs.insert(pid)
             }
         }
         return supportedPIDs
+    }
+
+    private func sameModeFamily(_ command: OBDCommand, as getter: OBDCommand) -> Bool {
+        switch (command, getter) {
+        case (.mode1, .mode1), (.mode6, .mode6), (.mode9, .mode9):
+            return true
+        default:
+            return false
+        }
     }
 }
 
@@ -463,13 +489,24 @@ struct BatchedResponse {
         let properties = cmd.properties
         let size = properties.bytes
         guard response.count >= size else { return nil }
+
+        // The batched ECU response interleaves [PID, ...data] pairs in the
+        // order the ECU chooses (which can differ from the request order,
+        // and may omit unsupported PIDs entirely). Peek at the next byte
+        // and only consume the slice if it matches the PID we expected;
+        // otherwise leave the buffer alone so the next extractValue call
+        // can pick up the byte. Without this guard, a missing PID would
+        // shift every subsequent value by one PID worth of bytes.
+        let pidString = properties.command.dropFirst(2)
+        guard let expectedPID = UInt8(pidString, radix: 16),
+              let actualPID = response.first,
+              actualPID == expectedPID else {
+            return nil
+        }
+
         let valueData = response.prefix(size)
-
         response.removeFirst(size)
-        //        print("Buffer: \(buffer.compactMap { String(format: "%02X ", $0) }.joined())")
         let result = cmd.properties.decode(data: valueData, unit: unit)
-
-        
 
         switch result {
         case let .success(measurementResult):
