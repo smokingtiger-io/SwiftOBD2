@@ -79,7 +79,13 @@ public struct Message: MessageProtocol {
         else { // Pre-validate the length
             throw ParserError.error("Frame validation failed")
         }
-        return frame.data.dropFirst(2)
+        // Layout: [PCI(length)] [mode] [PID, ...data]. dataLen counts
+        // mode+PID+data, so after stripping length+mode the real payload
+        // is dataLen-1 bytes. Trimming to that length drops any CAN
+        // padding (0xAA / 0x55) that the adapter appended to fill the
+        // 8-byte frame — without it the padding flowed into multi-byte
+        // UAS decoders and inflated readings like RPM/MAF.
+        return frame.data.dropFirst(2).prefix(Int(dataLen) - 1)
     }
 
     private func parseMultiFrameMessage(_ frames: [Frame]) throws -> Data {
