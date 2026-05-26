@@ -107,6 +107,15 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         characteristicHandler = BLECharacteristicHandler(messageProcessor: messageProcessor)
         peripheralManager = BLEPeripheralManager(characteristicHandler: characteristicHandler)
         peripheralScanner = BLEPeripheralScanner()
+        // BLEManager conforms to BLEPeripheralManagerDelegate but the
+        // delegate ref was never wired up. As a result the
+        // .connectedToAdapter state transition (and its
+        // obdDelegate.connectionStateChanged notification) inside
+        // peripheralManager(_:didSetupCharacteristics:) never reached
+        // the publisher, so UI subscribers saw the connection jump from
+        // .connecting straight to .connectedToVehicle (set later in
+        // ELM327.setupVehicle).
+        peripheralManager.delegate = self
     }
 
     // MARK: - Central Manager Control Methods
