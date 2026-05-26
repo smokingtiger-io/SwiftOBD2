@@ -68,6 +68,12 @@ class WifiManager: CommProtocol {
                     if hasResumed.setIfClear() {
                         continuation.resume(throwing: CommunicationError.errorOccurred(error))
                     }
+                case .cancelled:
+                    // Reached when disconnectPeripheral() calls tcp.cancel().
+                    // Without this branch the published state stays at
+                    // .connectedToAdapter even though the socket is gone.
+                    self.logger.info("Connection cancelled")
+                    self.connectionState = .disconnected
                 default:
                     break
                 }
