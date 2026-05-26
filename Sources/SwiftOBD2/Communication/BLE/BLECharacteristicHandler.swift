@@ -17,6 +17,16 @@ class BLECharacteristicHandler {
        }
 
 
+    // Many ELM327 BLE adapters expose only `.writeWithoutResponse` on
+    // their write characteristic (e.g., VGate iCar Pro, some OBDLink
+    // firmwares). The old code accepted only `.write`, leaving
+    // ecuWriteCharacteristic nil on those adapters so the connect
+    // characteristics-ready check (and subsequent sendCommand) failed.
+    private static func supportsWrite(_ characteristic: CBCharacteristic) -> Bool {
+        characteristic.properties.contains(.write) ||
+            characteristic.properties.contains(.writeWithoutResponse)
+    }
+
     func setupCharacteristics(_ characteristics: [CBCharacteristic], on peripheral: CBPeripheral) {
            for characteristic in characteristics {
                // Set up notifications for characteristics that support it
@@ -27,7 +37,7 @@ class BLECharacteristicHandler {
                // Assign characteristics based on UUID and properties
                switch characteristic.uuid.uuidString.uppercased() {
                case "FFE1": // for service FFE0 (read and write)
-                   if characteristic.properties.contains(.write) {
+                   if Self.supportsWrite(characteristic) {
                        ecuWriteCharacteristic = characteristic
                    }
                    if characteristic.properties.contains(.read) || characteristic.properties.contains(.notify) {
@@ -40,7 +50,7 @@ class BLECharacteristicHandler {
                    }
 
                case "FFF2": // for service FFF0 (write only)
-                   if characteristic.properties.contains(.write) {
+                   if Self.supportsWrite(characteristic) {
                        ecuWriteCharacteristic = characteristic
                    }
 
@@ -50,7 +60,7 @@ class BLECharacteristicHandler {
                    }
 
                case "2AF1": // for service 18F0 (write)
-                   if characteristic.properties.contains(.write) {
+                   if Self.supportsWrite(characteristic) {
                        ecuWriteCharacteristic = characteristic
                    }
 
@@ -81,7 +91,15 @@ class BLECharacteristicHandler {
             throw BLEManagerError.missingPeripheralOrCharacteristic
         }
 
-        peripheral.writeValue(data, for: characteristic, type: .withResponse)
+        // Prefer .withResponse when the characteristic supports it
+        // (delivers a delegate confirmation we can rely on for
+        // backpressure); fall back to .withoutResponse for adapters
+        // that advertise only that. Previously we always wrote with
+        // .withResponse, so a characteristic that only allowed
+        // .writeWithoutResponse silently failed the write.
+        let writeType: CBCharacteristicWriteType =
+            characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+        peripheral.writeValue(data, for: characteristic, type: writeType)
         logger.info("Sent command: \(command)")
     }
 
