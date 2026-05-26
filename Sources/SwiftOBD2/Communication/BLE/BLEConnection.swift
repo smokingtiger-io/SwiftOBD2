@@ -1,3 +1,19 @@
+// MARK: - Dead-code-excluded
+//
+// BLEConnection is an alternate BLE implementation that is NOT used by
+// OBDService — the production BLE path goes through BLEManager
+// (Communication/BLE/bleManager.swift), which OBDService instantiates
+// directly. BLEConnection's last referenced site was removed earlier;
+// keeping the file here (rather than deleting) preserves the
+// implementation as reference material in case the team later swaps
+// the BLE backend, but gating the contents on `#if false` keeps it
+// out of the compiled module so it can't drift into use accidentally
+// and stops SourceKit/diagnostics noise about the unused symbols.
+//
+// To re-enable: flip the guard below to `#if true` and wire it into
+// OBDService.initializeELM327.
+#if false
+
 import Combine
 import CoreBluetooth
 import Foundation
@@ -447,3 +463,5 @@ enum BLEConnectionError: Error, LocalizedError, Equatable {
         }
     }
 }
+
+#endif // dead-code guard for unused BLEConnection (see top of file)
