@@ -35,7 +35,16 @@ class BLEPeripheralManager: NSObject, ObservableObject {
     }
 
     func waitForCharacteristicsSetup(timeout: TimeInterval) async throws {
-        try await withTimeout(seconds: timeout) { [self] in
+        // Clear the completion slot on timeout so a late discovery callback
+        // doesn't dispatch into a dead continuation, and so the next
+        // connect attempt starts from a clean slate. Without this the
+        // `connectionCompletion` reference survived the throw and the
+        // next caller's slot would be silently overwritten (or assert in
+        // debug builds).
+        try await withTimeout(
+            seconds: timeout,
+            onTimeout: { [weak self] in self?.connectionCompletion = nil }
+        ) { [self] in
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 // didDiscoverCharacteristicsFor fires once per service requested
                 // during connect. If a peripheral exposes more than one of the
@@ -64,6 +73,17 @@ class BLEPeripheralManager: NSObject, ObservableObject {
     }
 
     func didDiscoverServices(_ peripheral: CBPeripheral, error: Error?) {
+        // Forward the framework error immediately so waitForCharacteristicsSetup
+        // can fail fast (BLEManagerError.unknownError or the underlying CB
+        // error) instead of stalling until timeout. Previously the parameter
+        // was ignored entirely and the loop just iterated an empty/nil
+        // peripheral.services list, leaving the continuation parked.
+        if let error = error {
+            logger.error("Service discovery failed: \(error.localizedDescription)")
+            connectionCompletion?(nil, error)
+            connectionCompletion = nil
+            return
+        }
         for service in peripheral.services ?? [] {
             logger.info("Discovered service: \(service.uuid.uuidString)")
             characteristicHandler.discoverCharacteristics(for: service, on: peripheral)
