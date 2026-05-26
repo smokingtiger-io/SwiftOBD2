@@ -88,7 +88,7 @@ extension Unit {
 class UAS {
     let signed: Bool
     let scale: Double
-    var unit: Unit
+    let unit: Unit
     let offset: Double
 
     init(signed: Bool, scale: Double, unit: Unit, offset: Double = 0.0) {
@@ -105,37 +105,41 @@ class UAS {
             value = twosComp(value, length: bytes.count * 8)
         }
 
-        var scaledValue = Double(value) * scale + offset
+        let scaledValue = Double(value) * scale + offset
 
+        // UAS instances are stored in a shared static dictionary, so the
+        // previous behaviour of mutating `self.unit` inside imperial
+        // conversion leaked converted unit labels back into later metric
+        // calls. Compute the converted (value, unit) as a local pair
+        // and leave the stored properties untouched.
         if unit_ == .imperial {
-            scaledValue = convertToImperial(scaledValue, unitType: self.unit)
+            let converted = Self.convertToImperial(scaledValue, unitType: unit)
+            return MeasurementResult(value: converted.value, unit: converted.unit)
         }
 
         return MeasurementResult(value: scaledValue, unit: unit)
     }
 
 
-    private func convertToImperial(_ value: Double, unitType: Unit) -> Double {
+    private static func convertToImperial(_ value: Double, unitType: Unit) -> (value: Double, unit: Unit) {
           switch unitType {
           case UnitTemperature.celsius:
-              self.unit = UnitTemperature.fahrenheit
-              return (value * 1.8) + 32 // Convert Celsius to Fahrenheit
+              return ((value * 1.8) + 32, UnitTemperature.fahrenheit) // Convert Celsius to Fahrenheit
           case UnitLength.kilometers:
-                self.unit = UnitLength.miles
-                return value * 0.621371 // Convert km to miles
+                return (value * 0.621371, UnitLength.miles) // Convert km to miles
           case UnitSpeed.kilometersPerHour:
-              self.unit = UnitSpeed.milesPerHour
-              return value * 0.621371 // Convert km/h to mph
+              return (value * 0.621371, UnitSpeed.milesPerHour) // Convert km/h to mph
           case UnitPressure.kilopascals:
-              self.unit = UnitPressure.poundsForcePerSquareInch
-                return value * 0.145038 // Convert kPa to psi
+                return (value * 0.145038, UnitPressure.poundsForcePerSquareInch) // Convert kPa to psi
           case .gramsPerSecond:
-              return value * 0.00220462 // Convert grams/sec to pounds/sec
+              // No standard imperial Unit for mass flow available in
+              // Foundation; the converted value is lbs/sec but we keep
+              // the original unit label rather than fabricate one.
+              return (value * 0.00220462, unitType)
             case .bar:
-                self.unit = UnitPressure.poundsForcePerSquareInch
-                return value * 14.5038 // Convert bar to psi
+                return (value * 14.5038, UnitPressure.poundsForcePerSquareInch) // Convert bar to psi
           default:
-              return value // Other units remain unchanged
+              return (value, unitType) // Other units remain unchanged
           }
       }
 }
