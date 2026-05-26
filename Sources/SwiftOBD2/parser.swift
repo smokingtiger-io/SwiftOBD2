@@ -126,7 +126,12 @@ struct Frame {
     var txID: ECUID
     var type: FrameType
     var seqIndex: UInt8 = 0 // Only used when type = CF
-    var dataLen: UInt8?
+    // FirstFrame length is a 12-bit value packed across low nibble of
+    // byte 0 and all of byte 1 (max 4095). Storing it as UInt8 silently
+    // dropped the high nibble, so multi-frame responses larger than 255
+    // bytes (e.g. long VIN / calibration-id streams) parsed with
+    // truncated length and assembled partial data.
+    var dataLen: UInt16?
 
     init(raw: String, idBits: Int) throws {
         self.raw = raw
@@ -159,9 +164,12 @@ struct Frame {
 
         switch type {
         case .singleFrame:
-            dataLen = (data[0] & 0x0F)
+            dataLen = UInt16(data[0] & 0x0F)
         case .firstFrame:
-            dataLen = ((UInt8(data[0] & 0x0F) << 8) + UInt8(data[1]))
+            // Compose 12-bit length: bits 11..8 from low nibble of byte 0,
+            // bits 7..0 from byte 1. Previous code shifted UInt8 << 8 which
+            // overflowed to zero, dropping the high nibble entirely.
+            dataLen = (UInt16(data[0] & 0x0F) << 8) | UInt16(data[1])
         case .consecutiveFrame:
             seqIndex = data[0] & 0x0F
         }
