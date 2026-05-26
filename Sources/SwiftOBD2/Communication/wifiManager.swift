@@ -35,7 +35,7 @@ class WifiManager: CommProtocol {
 
     var tcp: NWConnection?
 
-    func connectAsync(timeout _: TimeInterval, peripheral _: CBPeripheral? = nil) async throws {
+    func connectAsync(timeout: TimeInterval, peripheral _: CBPeripheral? = nil) async throws {
         let host = NWEndpoint.Host("192.168.0.10")
         guard let port = NWEndpoint.Port("35000") else {
             throw CommunicationError.invalidData
@@ -50,35 +50,52 @@ class WifiManager: CommProtocol {
         // still see the drop via the connectionState publisher.
         let hasResumed = AtomicFlag()
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            tcp?.stateUpdateHandler = { [weak self] newState in
-                guard let self = self else { return }
-                switch newState {
-                case .ready:
-                    self.logger.info("Connected to \(host.debugDescription):\(port.debugDescription)")
-                    self.connectionState = .connectedToAdapter
-                    if hasResumed.setIfClear() {
-                        continuation.resume(returning: ())
+        // NWConnection has no built-in connect timeout: an unreachable host
+        // parks the connection in .waiting(error) indefinitely (the handler
+        // just logs and never resumes), so wrap the handshake in withTimeout.
+        // On timeout we cancel the in-flight NWConnection — that transitions
+        // the state machine to .cancelled, which resumes the continuation via
+        // the hasResumed-gated path below before withTimeout itself throws.
+        try await withTimeout(
+            seconds: timeout,
+            timeoutError: CommunicationError.errorOccurred(URLError(.timedOut)),
+            onTimeout: { [weak self] in self?.tcp?.cancel() }
+        ) {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                self.tcp?.stateUpdateHandler = { [weak self] newState in
+                    guard let self = self else { return }
+                    switch newState {
+                    case .ready:
+                        self.logger.info("Connected to \(host.debugDescription):\(port.debugDescription)")
+                        self.connectionState = .connectedToAdapter
+                        if hasResumed.setIfClear() {
+                            continuation.resume(returning: ())
+                        }
+                    case let .waiting(error):
+                        self.logger.warning("Connection waiting: \(error.localizedDescription)")
+                    case let .failed(error):
+                        self.logger.error("Connection failed: \(error.localizedDescription)")
+                        self.connectionState = .disconnected
+                        if hasResumed.setIfClear() {
+                            continuation.resume(throwing: CommunicationError.errorOccurred(error))
+                        }
+                    case .cancelled:
+                        // Reached either when disconnectPeripheral() calls
+                        // tcp.cancel() (post-connect — hasResumed already set,
+                        // resume is a no-op) or when withTimeout's onTimeout
+                        // cancelled the in-flight connection (hasResumed still
+                        // clear — resume so the operation task doesn't leak).
+                        self.logger.info("Connection cancelled")
+                        self.connectionState = .disconnected
+                        if hasResumed.setIfClear() {
+                            continuation.resume(throwing: CommunicationError.errorOccurred(URLError(.timedOut)))
+                        }
+                    default:
+                        break
                     }
-                case let .waiting(error):
-                    self.logger.warning("Connection waiting: \(error.localizedDescription)")
-                case let .failed(error):
-                    self.logger.error("Connection failed: \(error.localizedDescription)")
-                    self.connectionState = .disconnected
-                    if hasResumed.setIfClear() {
-                        continuation.resume(throwing: CommunicationError.errorOccurred(error))
-                    }
-                case .cancelled:
-                    // Reached when disconnectPeripheral() calls tcp.cancel().
-                    // Without this branch the published state stays at
-                    // .connectedToAdapter even though the socket is gone.
-                    self.logger.info("Connection cancelled")
-                    self.connectionState = .disconnected
-                default:
-                    break
                 }
+                self.tcp?.start(queue: .main)
             }
-            tcp?.start(queue: .main)
         }
     }
 
