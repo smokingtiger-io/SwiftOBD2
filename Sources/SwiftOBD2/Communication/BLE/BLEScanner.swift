@@ -56,8 +56,15 @@ class BLEPeripheralScanner: ObservableObject {
             return first
         }
 
-        // Otherwise wait for discovery
-        return try await withTimeout(seconds: timeout, timeoutError: BLEScannerError.scanTimeout) {
+        // Clear foundPeripheralCompletion on timeout so a peripheral that
+        // shows up late (next scan, retry, etc.) doesn't dispatch into a
+        // dead continuation. Without this the closure outlived the throw
+        // and the next addDiscoveredPeripheral call would still invoke it.
+        return try await withTimeout(
+            seconds: timeout,
+            timeoutError: BLEScannerError.scanTimeout,
+            onTimeout: { [weak self] in self?.foundPeripheralCompletion = nil }
+        ) {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CBPeripheral, Error>) in
                 self.foundPeripheralCompletion = { peripheral, error in
                     if let peripheral = peripheral {

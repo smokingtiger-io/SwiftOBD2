@@ -60,7 +60,17 @@ class BLEMessageProcessor {
 
 
     func waitForResponse(timeout: TimeInterval) async throws -> [String] {
-            try await withTimeout(seconds: timeout, timeoutError: BLEMessageProcessorError.responseTimeout) { [self] in
+            // Clear messageCompletion on timeout so a late chunk arrival
+            // doesn't dispatch into a dead continuation, and so the next
+            // caller's assert(messageCompletion == nil) holds. Without
+            // this the slot leaked across requests in release builds:
+            // the assert silently failed and the new call overwrote the
+            // closure, dropping the previous continuation permanently.
+            try await withTimeout(
+                seconds: timeout,
+                timeoutError: BLEMessageProcessorError.responseTimeout,
+                onTimeout: { [weak self] in self?.messageCompletion = nil }
+            ) { [self] in
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String], Error>) in
 
                     // Check if there's already a pending command
