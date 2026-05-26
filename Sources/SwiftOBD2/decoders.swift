@@ -140,9 +140,19 @@ class UAS {
       }
 }
 
+// Two's-complement reinterpret of an unsigned value of `length` bits. If
+// the sign bit is set, returns the equivalent negative Int; otherwise
+// returns the value unchanged. Previous implementation only masked, so
+// signed UAS PIDs (fuel trims, O2 currents) and EvapPressureDecoder
+// never produced negative readings.
 func twosComp(_ value: Int, length: Int) -> Int {
     let mask = (1 << length) - 1
-    return value & mask
+    let truncated = value & mask
+    let signBit = 1 << (length - 1)
+    if truncated & signBit != 0 {
+        return truncated - (1 << length)
+    }
+    return truncated
 }
 
 private var uasIDS: [UInt8: UAS] = {
