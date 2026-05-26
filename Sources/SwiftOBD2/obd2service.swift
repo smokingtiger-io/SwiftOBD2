@@ -304,10 +304,13 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     }
 
     public func scanForPeripherals() async throws {
+        // Ensure isScanning is cleared even when the underlying scan
+        // throws; otherwise the published flag stuck on true and the UI
+        // showed a spinner indefinitely after a scan failure.
+        self.isScanning = true
+        defer { self.isScanning = false }
         do {
-            self.isScanning = true
             try await elm327.scanForPeripherals()
-            self.isScanning = false
         } catch {
             throw OBDServiceError.scanFailed(underlyingError: error)
         }

@@ -108,17 +108,20 @@ class WifiManager: CommProtocol {
     }
 
     private func sendCommandInternal(data: Data, retries: Int) async throws -> [String] {
-        for attempt in 1 ... retries {
+        // Guard against retries ≤ 0: `1 ... retries` would be an invalid
+        // closed range and trap. Treat zero or negative as "one attempt".
+        let attempts = max(1, retries)
+        for attempt in 1 ... attempts {
             do {
                 let response = try await sendAndReceiveData(data)
                 if let lines = processResponse(response) {
                     return lines
-                } else if attempt < retries {
-                    logger.info("No data received, retrying attempt \(attempt + 1) of \(retries)...")
-                    try await Task.sleep(nanoseconds: 100_000_000) // 0.5 seconds delay
+                } else if attempt < attempts {
+                    logger.info("No data received, retrying attempt \(attempt + 1) of \(attempts)...")
+                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 s — comment in older revisions said 0.5s; actual value here is 0.1s
                 }
             } catch {
-                if attempt == retries {
+                if attempt == attempts {
                     throw error
                 }
                 logger.warning("Attempt \(attempt) failed, retrying: \(error.localizedDescription)")

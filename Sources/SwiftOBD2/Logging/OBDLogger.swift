@@ -70,7 +70,13 @@ public class OBDLogger {
     }
     
     private func log(_ message: String, level: OSLogType, category: Category, file: String, function: String, line: Int) {
-        guard isLoggingEnabled && level.rawValue >= minimumLogLevel.rawValue else { return }
+        // OSLogType raw values aren't ordinal (.default=0x00, .info=0x01,
+        // .debug=0x02, .error=0x10, .fault=0x11), so the old
+        // `level.rawValue >= minimumLogLevel.rawValue` filter behaved
+        // asymmetrically — setting minimumLogLevel=.info silenced .default
+        // (notice) while still allowing .debug through. Map both to an
+        // ordinal severity and compare those instead.
+        guard isLoggingEnabled, Self.severity(for: level) >= Self.severity(for: minimumLogLevel) else { return }
         guard let logger = loggers[category] else { return }
         
         let fileName = URL(fileURLWithPath: file).lastPathComponent
@@ -92,6 +98,17 @@ public class OBDLogger {
         }
     }
     
+    private static func severity(for level: OSLogType) -> Int {
+        switch level {
+        case .debug: return 0
+        case .info: return 1
+        case .default: return 2
+        case .error: return 3
+        case .fault: return 4
+        default: return 1
+        }
+    }
+
     // MARK: - Specialized Logging Methods
     
     /// Log connection state changes

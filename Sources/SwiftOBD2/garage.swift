@@ -99,7 +99,12 @@ public class Garage: ObservableObject {
     public func deleteVehicle(_ car: Vehicle) {
         garageVehicles.removeAll(where: { $0.id == car.id })
         if car.id == currentVehicleId { // check if the deleted car was the current one
-            currentVehicleId = garageVehicles.first?.id ?? 0 // make the first car in the garage as the current car
+            // Also resync the published currentVehicle reference —
+            // previously only currentVehicleId moved, so any view bound
+            // to currentVehicle kept showing the just-deleted car.
+            let next = garageVehicles.first
+            currentVehicleId = next?.id ?? 0
+            currentVehicle = next
         }
         if car.make != "Mock-BMW", car.make != "Mock-Toyota" {
             saveGarageVehicles()
