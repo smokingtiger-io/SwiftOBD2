@@ -311,23 +311,37 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
     ///     `BLEManagerError.peripheralNotConnected` if the peripheral is not connected.
     ///     `BLEManagerError.timeout` if the operation times out.
     ///     `BLEManagerError.unknownError` if an unknown error occurs.
-    func sendCommand(_ command: String, retries _: Int = 3) async throws -> [String] {
+    func sendCommand(_ command: String, retries: Int = 3) async throws -> [String] {
         guard let peripheral = peripheralManager.connectedPeripheral else {
             obdError("Missing peripheral or ECU characteristic", category: .bluetooth)
             throw BLEManagerError.missingPeripheralOrCharacteristic
         }
 
         obdDebug("Sending command: \(command)", category: .communication)
-        
-        do {
-            try characteristicHandler.writeCommand(command, to: peripheral)
-            let response = try await messageProcessor.waitForResponse(timeout: BLEConstants.defaultTimeout)
-            obdDebug("Command response: \(response.joined(separator: " | "))", category: .communication)
-            return response
-        } catch {
-            obdError("Command failed: \(command) - \(error.localizedDescription)", category: .communication)
-            throw error
+
+        // Mirror WifiManager.sendCommandInternal: retry transient
+        // failures (timeouts, transient noData) up to `retries` times
+        // before bubbling the last error. Previously the retries
+        // parameter was underscored and the function tried exactly
+        // once — ELM327.testProtocol's `retries: 3` was a no-op on BLE.
+        let attempts = max(1, retries)
+        var lastError: Error = BLEManagerError.unknownError
+        for attempt in 1...attempts {
+            do {
+                try characteristicHandler.writeCommand(command, to: peripheral)
+                let response = try await messageProcessor.waitForResponse(timeout: BLEConstants.defaultTimeout)
+                obdDebug("Command response: \(response.joined(separator: " | "))", category: .communication)
+                return response
+            } catch {
+                lastError = error
+                if attempt < attempts {
+                    obdDebug("Command \(command) attempt \(attempt) failed: \(error.localizedDescription), retrying", category: .communication)
+                    try? await Task.sleep(nanoseconds: BLEConstants.pollingInterval)
+                }
+            }
         }
+        obdError("Command failed after \(attempts) attempts: \(command) - \(lastError.localizedDescription)", category: .communication)
+        throw lastError
     }
 
 
