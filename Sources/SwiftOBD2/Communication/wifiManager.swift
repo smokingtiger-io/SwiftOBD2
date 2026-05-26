@@ -42,6 +42,14 @@ class WifiManager: CommProtocol {
         }
         tcp = NWConnection(host: host, port: port, using: .tcp)
 
+        // NWConnection's stateUpdateHandler stays live for the whole connection
+        // lifetime, but the continuation can only be resumed once. Without this
+        // flag a post-connect .failed transition (e.g. ECONNRESET when the
+        // adapter or emulator drops) would crash with SWIFT TASK CONTINUATION
+        // MISUSE. The handler keeps updating connectionState so subscribers
+        // still see the drop via the connectionState publisher.
+        let hasResumed = AtomicFlag()
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             tcp?.stateUpdateHandler = { [weak self] newState in
                 guard let self = self else { return }
@@ -49,13 +57,17 @@ class WifiManager: CommProtocol {
                 case .ready:
                     self.logger.info("Connected to \(host.debugDescription):\(port.debugDescription)")
                     self.connectionState = .connectedToAdapter
-                    continuation.resume(returning: ())
+                    if hasResumed.setIfClear() {
+                        continuation.resume(returning: ())
+                    }
                 case let .waiting(error):
                     self.logger.warning("Connection waiting: \(error.localizedDescription)")
                 case let .failed(error):
                     self.logger.error("Connection failed: \(error.localizedDescription)")
                     self.connectionState = .disconnected
-                    continuation.resume(throwing: CommunicationError.errorOccurred(error))
+                    if hasResumed.setIfClear() {
+                        continuation.resume(throwing: CommunicationError.errorOccurred(error))
+                    }
                 default:
                     break
                 }
