@@ -106,7 +106,10 @@ public struct Message: MessageProtocol {
     }
 
     private func extractDataFromFrame(_ frame: Frame, startIndex: Int) throws -> Data {
-        guard let frameDataLen = frame.dataLen else {
+        guard let frameDataLen = frame.dataLen, frameDataLen > 0 else {
+            // Without the >0 guard a dataLen of 0 makes endIndex less
+            // than startIndex below, and `data[startIndex ..< endIndex]`
+            // traps with a precondition failure on the reversed range.
             throw ParserError.error("Failed to extract data from frame")
         }
         let endIndex = startIndex + Int(frameDataLen) - 1

@@ -79,11 +79,15 @@ class ELM327 {
     }
 
     private func setupConnectionStateSubscriber() {
+        // Setting self.connectionState already fires its didSet, which
+        // invokes obdDelegate?.connectionStateChanged. The extra
+        // explicit call inside the sink would notify the delegate a
+        // second time for every transition. Drop it; let didSet be the
+        // single source of truth.
         comm.connectionStatePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.connectionState = state
-                self?.obdDelegate?.connectionStateChanged(state: state)
                 self?.logger.debug("Connection state updated: \(state.hashValue)")
             }
             .store(in: &cancellables)

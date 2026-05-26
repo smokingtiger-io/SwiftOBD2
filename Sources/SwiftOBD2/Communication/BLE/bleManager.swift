@@ -64,7 +64,9 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
 
     // MARK: Properties
 
-    @Published var connectionState: ConnectionState = .disconnected
+    // private(set) so external code can subscribe via the publisher
+    // but cannot stomp on the internal state machine.
+    @Published private(set) var connectionState: ConnectionState = .disconnected
 
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
 

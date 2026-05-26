@@ -202,6 +202,16 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     /// - Returns: measurement result
     /// - Throws: Errors that might occur during the request process.
     public func requestPIDs(_ commands: [OBDCommand], unit: MeasurementUnit) async throws -> [OBDCommand: MeasurementResult] {
+        // ELM327 firmwares accept at most 6 PIDs per concatenated request
+        // before they truncate the query or respond with NO DATA. Surface
+        // this as a typed error rather than silently returning an empty
+        // dictionary or sending a too-long command.
+        guard commands.count <= 6 else {
+            throw OBDServiceError.commandFailed(
+                command: commands.map { $0.properties.command }.joined(separator: ","),
+                error: ELM327Error.invalidProtocol
+            )
+        }
         let response = try await sendCommandInternal("01" + commands.compactMap { $0.properties.command.dropFirst(2) }.joined(), retries: 10)
 
         guard let responseData = try elm327.canProtocol?.parse(response).first?.data else { return [:] }

@@ -241,16 +241,27 @@ extension OBDCommand {
 
                     return "10" + " " + hexA + " " + hexB
                 case .engineLoad:
-                    let load = Int.random(in: 0...100)
-                    let hexLoad = String(format: "%02X", load)
+                    // OBD engine load decodes as `A * 100 / 255`, so to
+                    // produce a 0–100% reading on the consumer side the
+                    // raw byte needs to span 0–255, not 0–100. Previously
+                    // the mock returned 0–100 hex which decoded to a
+                    // ceiling of ~39% — visibly different from real ECUs.
+                    let percent = Int.random(in: 0...100)
+                    let raw = Int(Double(percent) * 255.0 / 100.0)
+                    let hexLoad = String(format: "%02X", raw)
                     return "04" + " " + hexLoad
                 case .throttlePos:
                     let pos = Int.random(in: 0...100)
                     let hexPos = String(format: "%02X", pos)
                     return "11" + " " + hexPos
                 case .fuelLevel:
-                    let level = Int.random(in: 0...100)
-                    let hexLevel = String(format: "%02X", Double(level) * 2.55)
+                    // Passing a Double to a `%X` integer format is
+                    // undefined behaviour in C variadic semantics. Take
+                    // the integer rounding explicitly so we always emit
+                    // a well-defined two-hex-char byte.
+                    let percent = Int.random(in: 0...100)
+                    let raw = Int(Double(percent) * 255.0 / 100.0)
+                    let hexLevel = String(format: "%02X", raw)
                     return "2F" + " " + hexLevel
                 case .fuelPressure:
                     let pressure = Int.random(in: 0...765)
