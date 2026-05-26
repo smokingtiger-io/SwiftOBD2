@@ -141,10 +141,21 @@ class ELM327 {
 
         if let protocolToTest = preferredProtocol {
             logger.info("Attempting preferred protocol: \(protocolToTest.description)")
-            if await testProtocol(protocolToTest) {
-                return protocolToTest
-            } else {
-                logger.warning("Preferred protocol \(protocolToTest.description) failed. Falling back to automatic detection.")
+            // The previous code only ran testProtocol (a 0100 probe) and
+            // never sent ATSPx, so a vehicle already detected under the
+            // adapter's auto-protocol mode would pass the probe and we'd
+            // return preferredProtocol even though the wire format was
+            // actually whatever ATSP0 picked. That tricked the parser
+            // table lookup in setupVehicle into using the wrong CAN/legacy
+            // parser. Force the adapter onto the requested protocol first.
+            do {
+                _ = try await okResponse(protocolToTest.cmd)
+                if await testProtocol(protocolToTest) {
+                    return protocolToTest
+                }
+                logger.warning("Preferred protocol \(protocolToTest.description) failed verification. Falling back to automatic detection.")
+            } catch {
+                logger.warning("Failed to switch adapter to \(protocolToTest.description): \(error.localizedDescription). Falling back to automatic detection.")
             }
         } else {
             do {
