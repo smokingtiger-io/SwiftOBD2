@@ -37,7 +37,20 @@ class BLEPeripheralManager: NSObject, ObservableObject {
     func waitForCharacteristicsSetup(timeout: TimeInterval) async throws {
         try await withTimeout(seconds: timeout) { [self] in
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                // didDiscoverCharacteristicsFor fires once per service requested
+                // during connect. If a peripheral exposes more than one of the
+                // supportedServices (FFE0/FFF0/18F0) or one service errors
+                // while another succeeds, connectionCompletion can be invoked
+                // twice — the success path only nils it out after its branch,
+                // so an error→success sequence resumes the continuation twice
+                // and crashes with SWIFT TASK CONTINUATION MISUSE. CB delegate
+                // callbacks are serialized on a single dispatch queue, so a
+                // plain Bool is sufficient (mirrors BLEConnection.connect's
+                // hasResumed).
+                var hasResumed = false
                 self.connectionCompletion = { peripheral, error in
+                    guard !hasResumed else { return }
+                    hasResumed = true
                     if peripheral != nil {
                         continuation.resume()
                     } else if let error = error {
