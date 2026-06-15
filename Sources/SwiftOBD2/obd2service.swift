@@ -56,6 +56,12 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     /// The internal ELM327 object responsible for direct adapter interaction.
     private var elm327: ELM327
 
+    /// Optional CoreBluetooth identifier of a specific adapter to (re)connect
+    /// to, supplied by the host app after an in-app scan. When set, the BLE
+    /// comm layer retrieves and connects to this exact peripheral instead of
+    /// auto-picking the first ELM327 in range. nil keeps the auto-pick default.
+    private let bluetoothIdentifier: UUID?
+
     private var cancellables = Set<AnyCancellable>()
 
     /// Initializes the OBDService object.
@@ -63,11 +69,12 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     /// - Parameter connectionType: The desired connection type (default is Bluetooth).
     ///
     ///
-    public init(connectionType: ConnectionType = .bluetooth) {
+    public init(connectionType: ConnectionType = .bluetooth, bluetoothIdentifier: UUID? = nil) {
         self.connectionType = connectionType
+        self.bluetoothIdentifier = bluetoothIdentifier
         switch connectionType {
         case .bluetooth:
-            let bleManager = BLEManager()
+            let bleManager = BLEManager(preferredIdentifier: bluetoothIdentifier)
             elm327 = ELM327(comm: bleManager)
         case .wifi:
             elm327 = ELM327(comm: WifiManager())
@@ -147,7 +154,7 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     private func initializeELM327() {
         switch connectionType {
         case .bluetooth:
-            let bleManager = BLEManager()
+            let bleManager = BLEManager(preferredIdentifier: bluetoothIdentifier)
             elm327 = ELM327(comm: bleManager)
         case .wifi:
             elm327 = ELM327(comm: WifiManager())

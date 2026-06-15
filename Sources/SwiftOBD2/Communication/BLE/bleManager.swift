@@ -75,6 +75,11 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
 
     // Focused components
     private var centralManager: CBCentralManager!
+
+    // When set, connectAsync retrieves and connects to this exact peripheral
+    // (by CoreBluetooth identifier) instead of scanning and taking the first
+    // ELM327 in range. Supplied by the host app after an in-app device scan.
+    private let preferredIdentifier: UUID?
     private var messageProcessor: BLEMessageProcessor!
     private var characteristicHandler: BLECharacteristicHandler!
     private var peripheralManager: BLEPeripheralManager!
@@ -91,7 +96,8 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
 
     // MARK: - Initialization
 
-    override init() {
+    init(preferredIdentifier: UUID? = nil) {
+        self.preferredIdentifier = preferredIdentifier
         super.init()
         // Use background queue for better performance, but dispatch UI updates to main queue
         let bleQueue = DispatchQueue(label: "com.swiftobd2.ble", qos: .userInitiated)
@@ -256,6 +262,11 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         let targetPeripheral: CBPeripheral
         if let peripheral = peripheral {
             targetPeripheral = peripheral
+        } else if let id = preferredIdentifier,
+                  let known = centralManager.retrievePeripherals(withIdentifiers: [id]).first {
+            // App-side scan already identified the user's pick; reconnect to
+            // that exact peripheral on our own central rather than re-scanning.
+            targetPeripheral = known
         } else {
             startScanning(BLEPeripheralScanner.supportedServices)
             targetPeripheral = try await peripheralScanner.waitForFirstPeripheral(timeout: timeout)
