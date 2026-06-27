@@ -172,10 +172,15 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     /// - Parameter command: The OBD2 command to send.
     /// - Returns: A publisher with the measurement result.
     /// - Throws: Errors that might occur during the request process.
-    public func startContinuousUpdates(_ pids: [OBDCommand], unit: MeasurementUnit = .metric, interval: TimeInterval = 0.3) -> AnyPublisher<[OBDCommand: MeasurementResult], Error> {
+    public func startContinuousUpdates(_ pids: [OBDCommand], unit: MeasurementUnit = .metric, interval: TimeInterval = 0.1) -> AnyPublisher<[OBDCommand: MeasurementResult], Error> {
         Timer.publish(every: interval, on: .main, in: .common)
             .autoconnect()
-            .flatMap { [weak self] _ -> Future<[OBDCommand: MeasurementResult], Error> in
+            // maxPublishers: .max(1) serializes polling: the next request only
+            // starts after the previous one completes, so an `interval` shorter
+            // than the OBD round-trip can never overlap requests on the single
+            // BLE write characteristic. The effective rate self-throttles to
+            // min(1/interval, adapter round-trip rate).
+            .flatMap(maxPublishers: .max(1)) { [weak self] _ -> Future<[OBDCommand: MeasurementResult], Error> in
                 Future { promise in
                     guard let self = self else {
                         promise(.failure(OBDServiceError.notConnectedToVehicle))
