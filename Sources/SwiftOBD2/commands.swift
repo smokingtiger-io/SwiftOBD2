@@ -220,6 +220,10 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         case fuelInjectionTiming
         case fuelRate
         case emissionsReq
+        case driverDemandTorque
+        case actualEngineTorque
+        case referenceTorque
+        case odometer
     }
 
     public enum Mode3: CaseIterable, Codable, Comparable {
@@ -518,6 +522,10 @@ extension OBDCommand.Mode1 {
         case .fuelInjectionTiming: return CommandProperties("015D", "Fuel injection timing", 3, .injectTiming, true)
         case .fuelRate: return CommandProperties("015E", "Engine fuel rate", 3, .fuelRate, true)
         case .emissionsReq: return CommandProperties("015F", "Designed emission requirements", 3, .none)
+        case .driverDemandTorque: return CommandProperties("0161", "Driver's demand engine torque", 2, .torquePercent, true, maxValue: 130, minValue: -125)
+        case .actualEngineTorque: return CommandProperties("0162", "Actual engine torque", 2, .torquePercent, true, maxValue: 130, minValue: -125)
+        case .referenceTorque: return CommandProperties("0163", "Engine reference torque", 3, .referenceTorque, true, maxValue: 65535)
+        case .odometer: return CommandProperties("01A6", "Odometer", 5, .odometer, true, maxValue: 429496729.5)
         }
     }
 }

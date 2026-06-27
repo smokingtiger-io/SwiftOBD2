@@ -83,6 +83,7 @@ extension Unit {
     static let bar = Unit(symbol: "bar")
     static let ppm = Unit(symbol: "ppm")
     static let ratio = Unit(symbol: "ratio")
+    static let newtonMeter = Unit(symbol: "Nm")
 }
 
 class UAS {
@@ -279,6 +280,9 @@ public enum Decoders: Equatable, Encodable {
     case count
     case cvn
     case encoded_string
+    case torquePercent
+    case referenceTorque
+    case odometer
     case none
 
     func getDecoder() -> Decoder? {
@@ -340,6 +344,12 @@ public enum Decoders: Equatable, Encodable {
             case .uas(let id):
                 let decoder = UASDecoder(id: id)
                 return decoder
+            case .torquePercent:
+                return TorquePercentDecoder()
+            case .referenceTorque:
+                return ReferenceTorqueDecoder()
+            case .odometer:
+                return OdometerDecoder()
             default:
                 return nil
             }
@@ -481,6 +491,30 @@ struct MaxMafDecoder: Decoder {
         // arithmetic and traps for any data[0] >= 26 (26 * 10 = 260 > 255).
         let value = Double(data[0]) * 10
         return .success((.measurementResult(MeasurementResult(value: value, unit: Unit.gramsPerSecond))))
+    }
+}
+
+// Mode 01 PID 0x61/0x62 torque - percent. Single byte, offset -125 (%).
+struct TorquePercentDecoder: Decoder {
+    func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+        let value = Double(data.first ?? 0) - 125.0
+        return .success(.measurementResult(MeasurementResult(value: value, unit: Unit.percent)))
+    }
+}
+
+// Mode 01 PID 0x63 engine reference torque. Two bytes, 256A+B (Nm).
+struct ReferenceTorqueDecoder: Decoder {
+    func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+        let value = Double(bytesToInt(data))
+        return .success(.measurementResult(MeasurementResult(value: value, unit: Unit.newtonMeter)))
+    }
+}
+
+// Mode 01 PID 0xA6 odometer. Four bytes, (A<<24|B<<16|C<<8|D) / 10 (km).
+struct OdometerDecoder: Decoder {
+    func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+        let value = Double(bytesToInt(data)) / 10.0
+        return .success(.measurementResult(MeasurementResult(value: value, unit: UnitLength.kilometers)))
     }
 }
 

@@ -285,4 +285,49 @@ final class decodersTests: XCTestCase {
             XCTFail("Monitor decoding failed")
         }
     }
+
+    func testTorquePercent() {
+        let tests = [Data([0x00]): MeasurementResult(value: -125, unit: Unit.percent),
+                     Data([0x7D]): MeasurementResult(value: 0, unit: Unit.percent),
+                     Data([0xFF]): MeasurementResult(value: 130, unit: Unit.percent)]
+        for (data, expected) in tests {
+            switch TorquePercentDecoder().decode(data: data, unit: .metric) {
+            case let .success(result):
+                XCTAssertEqual(result.measurementResult!.value, expected.value, accuracy: 0.01)
+                XCTAssertEqual(result.measurementResult!.unit, expected.unit)
+            case let .failure(error):
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testReferenceTorque() {
+        let tests = [Data([0x00, 0x00]): MeasurementResult(value: 0, unit: Unit.newtonMeter),
+                     Data([0x01, 0x00]): MeasurementResult(value: 256, unit: Unit.newtonMeter),
+                     Data([0xFF, 0xFF]): MeasurementResult(value: 65535, unit: Unit.newtonMeter)]
+        for (data, expected) in tests {
+            switch ReferenceTorqueDecoder().decode(data: data, unit: .metric) {
+            case let .success(result):
+                XCTAssertEqual(result.measurementResult!.value, expected.value, accuracy: 0.01)
+                XCTAssertEqual(result.measurementResult!.unit, expected.unit)
+            case let .failure(error):
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testOdometer() {
+        let tests = [Data([0x00, 0x00, 0x00, 0x00]): MeasurementResult(value: 0, unit: UnitLength.kilometers),
+                     Data([0x00, 0x00, 0x00, 0x0A]): MeasurementResult(value: 1, unit: UnitLength.kilometers),
+                     Data([0xFF, 0xFF, 0xFF, 0xFF]): MeasurementResult(value: 429496729.5, unit: UnitLength.kilometers)]
+        for (data, expected) in tests {
+            switch OdometerDecoder().decode(data: data, unit: .metric) {
+            case let .success(result):
+                XCTAssertEqual(result.measurementResult!.value, expected.value, accuracy: 0.1)
+                XCTAssertEqual(result.measurementResult!.unit, expected.unit)
+            case let .failure(error):
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
 }
