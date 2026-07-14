@@ -497,7 +497,14 @@ struct MaxMafDecoder: Decoder {
 // Mode 01 PID 0x61/0x62 torque - percent. Single byte, offset -125 (%).
 struct TorquePercentDecoder: Decoder {
     func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
-        let value = Double(data.first ?? 0) - 125.0
+        // An empty payload must fail, not decode as (0 - 125) = -125 % — a
+        // truncated response would otherwise masquerade as a valid reading
+        // (and reach consumers clamped to a fake 0 Nm). `first` (not [0]):
+        // the payload arrives as a dropFirst() slice with shifted indices.
+        guard let firstByte = data.first else {
+            return .failure(.invalidData)
+        }
+        let value = Double(firstByte) - 125.0
         return .success(.measurementResult(MeasurementResult(value: value, unit: Unit.percent)))
     }
 }
